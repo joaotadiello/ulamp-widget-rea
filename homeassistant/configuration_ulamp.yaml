@@ -1,0 +1,65 @@
+# ══════════════════════════════════════════════════════════════════
+# uLamp → Home Assistant → Alexa
+# Cole em /config/configuration.yaml (ajuste o caminho do ulampctl)
+# Depois: Developer Tools → YAML → Reload Template Entities
+# ══════════════════════════════════════════════════════════════════
+
+shell_command:
+  ulamp_on:     "/Users/joao/Desktop/ulamp-alexa/ulampctl on"
+  ulamp_off:    "/Users/joao/Desktop/ulamp-alexa/ulampctl off"
+  ulamp_status: "/Users/joao/Desktop/ulamp-alexa/ulampctl status"
+  ulamp_color:  "/Users/joao/Desktop/ulamp-alexa/ulampctl color {{ rrggbb }} {{ bri }}"
+  ulamp_white:  "/Users/joao/Desktop/ulamp-alexa/ulampctl white {{ v }}"
+
+command_line:
+  - sensor:
+      name: uLamp State
+      unique_id: ulamp_state
+      command: "/Users/joao/Desktop/ulamp-alexa/ulampctl status"
+      scan_interval: 60
+      value_template: >
+        {% set j = value_json | from_json if value_json is string else value_json %}
+        {{ j.power | default(0) }}
+      json_attributes:
+        - mode
+        - lineStyle
+        - segments
+        - lamp_bead
+        - total_lamp_bead
+
+light:
+  - platform: template
+    lights:
+      ulamp_strip:
+        friendly_name: "Fita uLamp"
+        unique_id: "ulamp_strip_88006190"
+        value_template: "{{ states('sensor.ulamp_state') | int > 0 }}"
+        turn_on:
+          - service: shell_command.ulamp_on
+        turn_off:
+          - service: shell_command.ulamp_off
+        set_color:   # Alexa: "deixe a fita vermelha"
+          - service: shell_command.ulamp_color
+            data:
+              rrggbb: >-
+                {{ '%02x%02x%02x' | format((state_attr('light.ulamp_strip','hs_color') or [0,0])[0] * 255 // 360
+                   if false else 255, 0, 0) }}
+          # dica: para conversão HSV→RGB completa use um template script Python
+        set_level:    # Alexa: "fita a 50 por cento"
+          - service: shell_command.ulamp_white
+            data:
+              v: "{{ (brightness | int(255) * 255 // 255) | int }}"
+
+# ══════════════════════════════════════════════════════════════════
+# ALEXA (2 formas):
+#
+# A) Nabu Casa (mais simples): Home Assistant Cloud → conectar Alexa
+#    → dispositivos descobertos automaticamente → "Alexa, liga a Fita uLamp"
+#
+# B) Emulador Haaska/HASS Alexa Skill: expõe /api/alexa e registra a skill.
+#
+# Após descobrir a entidade light.ulamp_strip, comandos funcionam:
+#   "Alexa, liga/desliga a Fita uLamp"
+#   "Alexa, brilho da Fita uLamp em 50%"
+#   "Alexa, muda a Fita uLamp para vermelho" (via set_color)
+# ══════════════════════════════════════════════════════════════════
